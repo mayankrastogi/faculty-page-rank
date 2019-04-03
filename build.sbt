@@ -4,6 +4,12 @@ version := "0.1"
 
 scalaVersion := "2.12.8"
 
+// Merge strategy to avoid deduplicate errors
+assemblyMergeStrategy in assembly := {
+  case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+  case x => MergeStrategy.first
+}
+
 libraryDependencies ++= Seq(
   // Typesafe Configuration Library
   "com.typesafe" % "config" % "1.3.2",

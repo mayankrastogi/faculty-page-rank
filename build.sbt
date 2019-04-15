@@ -15,7 +15,7 @@ libraryDependencies ++= Seq(
   "com.typesafe" % "config" % "1.3.2",
 
   // Apache Spark with log4j dependencies removed
-  "org.apache.spark" %% "spark-core" % "2.4.1",// excludeAll("log4j", "slf4j-log4j12"),
+  "org.apache.spark" %% "spark-core" % "2.4.1" excludeAll("log4j", "slf4j-log4j12"),
   
   // Bridge log4j over slf4j
   "org.slf4j" % "log4j-over-slf4j" % "1.7.26",

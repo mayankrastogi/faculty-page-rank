@@ -49,11 +49,11 @@ object DBLPPageRank extends LazyLogging {
     // Set max iterations to the 3rd argument if provided, otherwise use the one from settings
     val maxIterations = {
       try {
-        if (args.length > 2) args(3).toInt else settings.maxIterations
+        if (args.length > 2) args(2).toInt else settings.maxIterations
       }
       catch {
         case _: NumberFormatException =>
-          logger.warn(s"${args(3)} is not an integer. Falling back to ${settings.maxIterations} number of max iterations.")
+          logger.warn(s"${args(2)} is not an integer. Falling back to ${settings.maxIterations} number of max iterations.")
           settings.maxIterations
       }
     }
@@ -248,7 +248,7 @@ object DBLPPageRank extends LazyLogging {
     val outputDirFacultyRanking = s"$outputDir/${settings.outputDirFacultyRanking}"
     ranks
       .filter(node => facultyLookupTable.contains(node._1))
-      .sortBy(_._2, ascending = false)
+      .sortBy(_._2, ascending = false, 1)
       .map({ case (node, rank) => s"$node\t$rank" })
       .saveAsTextFile(outputDirFacultyRanking)
     logger.info("Page rank for UIC CS department faculty written to: " + outputDirFacultyRanking)
@@ -257,7 +257,7 @@ object DBLPPageRank extends LazyLogging {
     val outputDirPublicationVenuesRanking = s"$outputDir/${settings.outputDirPublicationVenuesRanking}"
     ranks
       .filter(node => publicationVenues.contains(node._1))
-      .sortBy(_._2, ascending = false)
+      .sortBy(_._2, ascending = false, 1)
       .map({ case (node, rank) => s"$node\t$rank" })
       .saveAsTextFile(outputDirPublicationVenuesRanking)
     logger.info("Page rank for publication venues written to: " + outputDirPublicationVenuesRanking)

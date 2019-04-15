@@ -27,6 +27,10 @@ class Settings(config: Config) {
   // Spark Job Config
 
   val jobName: String = getString("job.name")
+  val maxIterations: Int = getInt("job.max-iterations")
+  val dampingFactor: Double = getDouble("job.damping-factor")
+  val outputDirFacultyRanking: String = getString("job.output-dir.faculty-ranking")
+  val outputDirPublicationVenuesRanking: String = getString("job.output-dir.publication-venues-ranking")
   val xmlInputStartTags: List[String] = getStringList("xml-input.start-tags")
   val xmlInputEndTags: List[String] = getStringList("xml-input.end-tags")
 

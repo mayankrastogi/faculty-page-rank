@@ -8,10 +8,8 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.io.{LongWritable, Text}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.util.CollectionAccumulator
 import org.apache.spark.{SparkConf, SparkContext}
 
-import scala.collection.JavaConverters._
 import scala.xml.{Elem, XML}
 
 /**
@@ -72,7 +70,7 @@ object DBLPPageRank extends LazyLogging {
 
     // Configure Spark Job and create context
     val sparkConf = new SparkConf().setAppName(settings.jobName)
-    if(localMode) {
+    if (localMode) {
       sparkConf.setMaster("local[*]")
     }
     val spark = SparkContext.getOrCreate(sparkConf)
@@ -86,9 +84,6 @@ object DBLPPageRank extends LazyLogging {
     val dampingFactor = settings.dampingFactor
 
     logger.info("Building the Page Rank computation job")
-
-    // Accumulator to store publication venues identified while traversing publication data
-    val publicationVenuesAccumulator = spark.collectionAccumulator[String]
 
     // Read publications from XML file
     val publications = spark.newAPIHadoopFile(
@@ -185,8 +180,8 @@ object DBLPPageRank extends LazyLogging {
 
       // The publication venue does not have any outgoing links; Each author in this publication links to every other
       // author along with the publication venue
-      if(authors.nonEmpty) {
-        Seq((publicationVenue, Seq())) ++ authors.map((_, authors ++ Seq(publicationVenue)))
+      if (authors.nonEmpty) {
+        Seq((publicationVenue, Seq())) ++ authors.map(author => (author, authors.filterNot(_.equals(author)) ++ Seq(publicationVenue)))
       } else {
         Seq()
       }
@@ -233,8 +228,8 @@ object DBLPPageRank extends LazyLogging {
     * Writes the Page Rank values computed to disk, creating separate directories for page rank values of UIC CS faculty
     * and the publication venues. Both the lists are sorted in descending order of their page ranks.
     *
-    * @param outputDir         Location where the output files and directories should be written.
-    * @param ranks             An RDD containing the page rank values for all authors and publication venues.
+    * @param outputDir Location where the output files and directories should be written.
+    * @param ranks     An RDD containing the page rank values for all authors and publication venues.
     */
   def writePageRankOutput(outputDir: String, ranks: RDD[(String, Double)]): Unit = {
     logger.trace(s"writePageRankOutput(outputDir: $outputDir, ranks: $ranks)")

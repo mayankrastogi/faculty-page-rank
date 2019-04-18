@@ -4,7 +4,6 @@ import com.mayankrastogi.cs441.hw5.inputformats.MultiTagXmlInputFormat
 import com.mayankrastogi.cs441.hw5.utils.{Settings, Utils}
 import com.typesafe.config.ConfigFactory
 import com.typesafe.scalalogging.LazyLogging
-import javax.xml.parsers.SAXParserFactory
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.io.{LongWritable, Text}
@@ -25,12 +24,6 @@ object DBLPPageRank extends LazyLogging {
 
   private val facultyLookupTable: Map[String, String] = Utils.getFacultyLookupTable(settings.facultyListFile)
   private val dblpDTDPath = Utils.getDTDFilePath(settings.dblpDTDAbsolutePath, settings.dblpDTDResourcePath)
-
-  // Cache XML parser instance as instantiating a parser is expensive. The same parser can be reused to parse multiple
-  // inputs. Moreover, the DTD file will not be needed to parsed for each new input and the grammar pool will keep
-  // getting updated, thus improving the performance of the job. This optimization reduces the time taken by the job to
-  // run by 40%.
-  private val xmlParser = SAXParserFactory.newInstance().newSAXParser()
 
   /**
     * Runs the spark job.
@@ -58,8 +51,10 @@ object DBLPPageRank extends LazyLogging {
       }
     }
 
+    val localMode = args.length > 3 && args(3).equalsIgnoreCase("local")
+
     // Run the spark job
-    runJob(args(0), args(1), maxIterations)
+    runJob(args(0), args(1), maxIterations, localMode)
   }
 
   /**
@@ -68,14 +63,18 @@ object DBLPPageRank extends LazyLogging {
     * @param inputDir      The location of input files for the spark job.
     * @param outputDir     The location of where output of spark job will be saved.
     * @param maxIterations Maximum number of iterations for computing Page Rank.
+    * @param localMode     Whether the spark job should be run in local mode.
     */
-  def runJob(inputDir: String, outputDir: String, maxIterations: Int): Unit = {
-    logger.trace(s"runJob(inputPath: $inputDir, outputPath: $outputDir, maxIterations: $maxIterations)")
+  def runJob(inputDir: String, outputDir: String, maxIterations: Int, localMode: Boolean): Unit = {
+    logger.trace(s"runJob(inputPath: $inputDir, outputPath: $outputDir, maxIterations: $maxIterations, localMode: $localMode)")
 
     logger.info("Configuring Spark Job...")
 
     // Configure Spark Job and create context
-    val sparkConf = new SparkConf().setAppName(settings.jobName).setMaster("local")
+    val sparkConf = new SparkConf().setAppName(settings.jobName)
+    if(localMode) {
+      sparkConf.setMaster("local[*]")
+    }
     val spark = SparkContext.getOrCreate(sparkConf)
 
     // Configure XML input format
@@ -143,8 +142,8 @@ object DBLPPageRank extends LazyLogging {
     val xmlString =
       s"""<?xml version="1.0" encoding="ISO-8859-1"?><!DOCTYPE dblp SYSTEM "$dblpDTDPath"><dblp>$publicationXMLString</dblp>"""
 
-    // Parse the XML using the cached XML parser
-    XML.withSAXParser(xmlParser).loadString(xmlString)
+    // Parse the XML
+    XML.loadString(xmlString)
   }
 
   /**
@@ -177,18 +176,34 @@ object DBLPPageRank extends LazyLogging {
       case _ => "author"
     }
 
-    // Extract the publication venue from this publication and add it to the accumulator
-    val publicationVenue = (publicationElement \\ publicationVenueLookupTag).head.text
-    publicationVenues.add(publicationVenue)
+    try {
+      // Extract the publication venue from this publication and add it to the accumulator
+      val publicationVenue = (publicationElement \\ publicationVenueLookupTag).head.text
 
-    // Extract the authors of this publication accounting for alternate names of UIC CS faculty
-    val authors = (publicationElement \\ authorLookupTag).map(node => {
-      if (facultyLookupTable.contains(node.text)) facultyLookupTable(node.text) else node.text
-    })
+  //    publicationVenues.add(publicationVenue)
 
-    // The publication venue does not have any outgoing links; Each author in this publication links to every other
-    // author along with the publication venue
-    Seq((publicationVenue, Seq())) ++ authors.map((_, authors ++ Seq(publicationVenue)))
+      // Extract the authors of this publication accounting for alternate names of UIC CS faculty
+      //    val authors = (publicationElement \\ authorLookupTag).map(node => {
+      //      if (facultyLookupTable.contains(node.text)) facultyLookupTable(node.text) else node.text
+      //    })
+      val authors = (publicationElement \\ authorLookupTag).collect {
+        case node if facultyLookupTable.contains(node.text) => facultyLookupTable(node.text)
+      }
+
+      // The publication venue does not have any outgoing links; Each author in this publication links to every other
+      // author along with the publication venue
+      if(authors.nonEmpty) {
+        publicationVenues.add(publicationVenue)
+        Seq((publicationVenue, Seq())) ++ authors.map((_, authors ++ Seq(publicationVenue)))
+      } else {
+        Seq()
+      }
+    }
+    catch {
+      case _: NoSuchElementException =>
+        logger.warn(s"Could not find tag <$publicationVenueLookupTag> in publication of type <$publicationType>")
+        Seq()
+    }
   }
 
   /**
@@ -203,7 +218,7 @@ object DBLPPageRank extends LazyLogging {
     * @return An RDD with author names or publication venues as keys and their page ranks as values.
     */
   def computePageRank(authorsAndVenues: RDD[(String, Seq[String])], maxIterations: Int, dampingFactor: Double): RDD[(String, Double)] = {
-    logger.trace(s"computePageRank(authorsAndVenues: $authorsAndVenues, maxIterations: $maxIterations, dampingFactor: $maxIterations")
+    logger.trace(s"computePageRank(authorsAndVenues: $authorsAndVenues, maxIterations: $maxIterations, dampingFactor: $dampingFactor")
 
     // Iterate for maxIterations times
     (1 to maxIterations)

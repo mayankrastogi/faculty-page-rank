@@ -14,7 +14,7 @@ object Utils {
     * @return Map of alternative names to primary names (the names mentioned on UIC website)
     */
   def getFacultyLookupTable(fileName: String): Map[String, String] = {
-    val facultyListFile = Source.fromResource(fileName)
+    val facultyListFile = Source.fromInputStream(getClass.getClassLoader.getResourceAsStream(fileName))
 
     // RegEx pattern for parsing key value pairs and capturing the keys and values using capturing groups
     val pattern = """(\b.+\b)\s*=\s*(\b.+\b)""".r("key", "value")
@@ -22,6 +22,7 @@ object Utils {
     // Match each line of input file against the regex and generate the map
     val lookupTable = facultyListFile.getLines().map(line => {
       val regexMatch = pattern.findAllIn(line)
+      regexMatch.hasNext    // Workaround to prevent IllegalStateException
       regexMatch.group("key") -> regexMatch.group("value")
     }).toMap
 

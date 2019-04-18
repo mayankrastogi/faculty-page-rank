@@ -104,7 +104,7 @@ object DBLPPageRank extends LazyLogging {
       // Create an XML document from each publication read from the XML input file
       .map(createValidXML)
       // Extract authors and publication venues from each publication
-      .flatMap(extractAuthorsAndVenues(_, publicationVenuesAccumulator))
+      .flatMap(extractAuthorsAndVenues)
       // Remove any duplicate entries
       .distinct()
       // Cache this RDD in memory since we will be using it multiple times during page rank computation
@@ -117,11 +117,10 @@ object DBLPPageRank extends LazyLogging {
 
     // Collect results
     ranks.collect()
-    val publicationVenues = publicationVenuesAccumulator.value.asScala.toSet
     logger.info("Finished computing page rank ")
 
     // Write results
-    writePageRankOutput(outputDir, ranks, publicationVenues)
+    writePageRankOutput(outputDir, ranks)
 
     // Stop the Spark Job
     spark.stop()
@@ -136,7 +135,7 @@ object DBLPPageRank extends LazyLogging {
     * @return The parsed XML node with `dblp` as the root node.
     */
   def createValidXML(publicationXMLString: String): Elem = {
-    logger.trace(s"createValidXML(publicationXMLString: $publicationXMLString")
+    logger.trace(s"createValidXML(publicationXMLString: $publicationXMLString)")
 
     // Wrap the XML subset in a format which will be valid according to the DTD
     val xmlString =
@@ -152,12 +151,11 @@ object DBLPPageRank extends LazyLogging {
     * outgoing links.
     *
     * @param publicationElement The root node of the XML document (The root must be &lt;dblp&gt;)
-    * @param publicationVenues  Accumulator for storing publication venues extracted from publications
     * @return List of authors extracted from the publication paired with every other author of this publication and its
     *         venue.
     */
-  def extractAuthorsAndVenues(publicationElement: Elem, publicationVenues: CollectionAccumulator[String]): Seq[(String, Seq[String])] = {
-    logger.trace(s"extractAuthorsAndVenues(publicationElement: $publicationElement, publicationVenues: $publicationVenues")
+  def extractAuthorsAndVenues(publicationElement: Elem): Seq[(String, Seq[String])] = {
+    logger.trace(s"extractAuthorsAndVenues(publicationElement: $publicationElement)")
 
     // Find the type of publication
     val publicationType = publicationElement.child.head.label
@@ -180,12 +178,7 @@ object DBLPPageRank extends LazyLogging {
       // Extract the publication venue from this publication and add it to the accumulator
       val publicationVenue = (publicationElement \\ publicationVenueLookupTag).head.text
 
-  //    publicationVenues.add(publicationVenue)
-
       // Extract the authors of this publication accounting for alternate names of UIC CS faculty
-      //    val authors = (publicationElement \\ authorLookupTag).map(node => {
-      //      if (facultyLookupTable.contains(node.text)) facultyLookupTable(node.text) else node.text
-      //    })
       val authors = (publicationElement \\ authorLookupTag).collect {
         case node if facultyLookupTable.contains(node.text) => facultyLookupTable(node.text)
       }
@@ -193,7 +186,6 @@ object DBLPPageRank extends LazyLogging {
       // The publication venue does not have any outgoing links; Each author in this publication links to every other
       // author along with the publication venue
       if(authors.nonEmpty) {
-        publicationVenues.add(publicationVenue)
         Seq((publicationVenue, Seq())) ++ authors.map((_, authors ++ Seq(publicationVenue)))
       } else {
         Seq()
@@ -218,7 +210,7 @@ object DBLPPageRank extends LazyLogging {
     * @return An RDD with author names or publication venues as keys and their page ranks as values.
     */
   def computePageRank(authorsAndVenues: RDD[(String, Seq[String])], maxIterations: Int, dampingFactor: Double): RDD[(String, Double)] = {
-    logger.trace(s"computePageRank(authorsAndVenues: $authorsAndVenues, maxIterations: $maxIterations, dampingFactor: $dampingFactor")
+    logger.trace(s"computePageRank(authorsAndVenues: $authorsAndVenues, maxIterations: $maxIterations, dampingFactor: $dampingFactor)")
 
     // Iterate for maxIterations times
     (1 to maxIterations)
@@ -243,10 +235,9 @@ object DBLPPageRank extends LazyLogging {
     *
     * @param outputDir         Location where the output files and directories should be written.
     * @param ranks             An RDD containing the page rank values for all authors and publication venues.
-    * @param publicationVenues Set of all publication venues identified while reading the input XML file.
     */
-  def writePageRankOutput(outputDir: String, ranks: RDD[(String, Double)], publicationVenues: Set[String]): Unit = {
-    logger.trace(s"writePageRankOutput(outputDir: $outputDir, ranks: $ranks, publicationVenues: $publicationVenues")
+  def writePageRankOutput(outputDir: String, ranks: RDD[(String, Double)]): Unit = {
+    logger.trace(s"writePageRankOutput(outputDir: $outputDir, ranks: $ranks)")
 
     // Clean output directory if it exists
     val outputPath = new Path(outputDir)
@@ -271,7 +262,7 @@ object DBLPPageRank extends LazyLogging {
     // Get Page Rank values for publication venues, sort them in descending order and write the values
     val outputDirPublicationVenuesRanking = s"$outputDir/${settings.outputDirPublicationVenuesRanking}"
     ranks
-      .filter(node => publicationVenues.contains(node._1))
+      .filter(node => !facultyLookupTable.contains(node._1))
       .sortBy(_._2, ascending = false, 1)
       .map({ case (node, rank) => s"$node\t$rank" })
       .saveAsTextFile(outputDirPublicationVenuesRanking)

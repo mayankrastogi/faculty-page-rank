@@ -23,21 +23,11 @@ class UtilsTest extends FunSuite with Matchers {
   private val proceedingsXml =
     <proceedings mdate="2017-06-08" key="tr/trier/MI99-17" publtype="informal">
       <editor>Dieter Baum</editor>
-      <editor>Norbert Th. M
-        &uuml;
-        ller</editor>
-      <editor>Richard R
-        &ouml;
-        dler</editor>
-      <title>MMB '99, Messung, Modellierung und Bewertung von Rechen- und Kommunikationssystemen, 10. GI/NTG-Fachtagung, 22.-24. September 1999, Trier, Kurzbeitr
-        &auml;
-        ge und Toolbeschreibungen</title>
-      <booktitle>MMB (Kurzvortr
-        &auml;
-        ge)</booktitle>
-      <series>Universit
-        &auml;
-        t Trier, Mathematik/Informatik, Forschungsbericht</series>
+      <editor>Norbert Th. M&uuml;ller</editor>
+      <editor>Richard R&ouml;dler</editor>
+      <title>MMB '99, Messung, Modellierung und Bewertung von Rechen- und Kommunikationssystemen, 10. GI/NTG-Fachtagung, 22.-24. September 1999, Trier, Kurzbeitr&auml;ge und Toolbeschreibungen</title>
+      <booktitle>MMB (Kurzvortr&auml;ge)</booktitle>
+      <series>Universit&auml;t Trier, Mathematik/Informatik, Forschungsbericht</series>
       <volume>99-16</volume>
       <year>1999</year>
       <url>db/conf/mmb/mmb99k.html</url>
@@ -57,9 +47,7 @@ class UtilsTest extends FunSuite with Matchers {
 
   private val publicationWithMultipleVenueTags =
     <proceedings mdate="2017-05-26" key="journals/thipeac/2009-2">
-      <editor>Per Stenstr
-        &ouml;
-        m</editor>
+      <editor>Per Stenstr&ouml;m</editor>
       <title>Transactions on High-Performance Embedded Architectures and Compilers II</title>
       <volume>5470</volume>
       <year>2009</year>

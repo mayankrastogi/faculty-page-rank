@@ -8,21 +8,34 @@ import scala.io.Source
 object Utils {
 
   /**
+    * Pre-compiled Regex pattern to efficiently extract authors from a publication's XML.
+    */
+  private val authorsPattern =
+    """\<(author|editor).*>(.*)\<\/(author|editor)>""".r("startTag", "author", "endTag")
+
+  /**
+    * Pre-compiled Regex pattern to efficiently extract publication venues from a publication's XML.
+    */
+  private val publicationVenuePattern =
+    """\<\b(journal|publisher|school|booktitle)\b>(.*)\<\/(journal|publisher|school|booktitle)>""".r("startTag", "venue", "endTag")
+
+  /**
     * Parses the file containing the mapping of alternate and primary names of UIC CS department faculty.
     *
-    * @param fileName The path relative to the resources directory for the file containing the mapping for faculty names
+    * @param fileName The path relative to the resources directory for the file containing the mapping for faculty names.
     * @return Map of alternative names to primary names (the names mentioned on UIC website)
     */
   def getFacultyLookupTable(fileName: String): Map[String, String] = {
     val facultyListFile = Source.fromInputStream(getClass.getClassLoader.getResourceAsStream(fileName))
 
-    // RegEx pattern for parsing key value pairs and capturing the keys and values using capturing groups
-    val pattern = """(\b.+\b)\s*=\s*(\b.+\b)""".r("key", "value")
+    // Regex pattern for parsing key value pairs and capturing the keys and values using capturing groups
+    val pattern =
+      """(\b.+\b)\s*=\s*(\b.+\b)""".r("key", "value")
 
     // Match each line of input file against the regex and generate the map
     val lookupTable = facultyListFile.getLines().map(line => {
       val regexMatch = pattern.findAllIn(line)
-      regexMatch.hasNext    // Workaround to prevent IllegalStateException
+      regexMatch.hasNext // Workaround to prevent IllegalStateException
       regexMatch.group("key") -> regexMatch.group("value")
     }).toMap
 
@@ -33,23 +46,24 @@ object Utils {
   }
 
   /**
-    * Qualifies the path to the `dblp.dtd` file.
+    * Finds all the authors from the given publication.
     *
-    * If an absolute path is provided, the same is returned. Otherwise, the path relative to the resources directory is
-    * fully qualified into a URI and returned.
-    *
-    * @param absolutePath The absolute path to `dblp.dtd` file. If empty, the `resourcePath` will be used.
-    * @param resourcePath The path to `dblp.dtd` relative to the resources directory.
-    * @return Fully qualified URI to the file in resources, or the `absolutePath` if provided.
+    * @param publication XML string representing a single publication from the input XML file.
+    * @return List of authors found in the publication. Empty if no authors could be found.
     */
-  def getDTDFilePath(absolutePath: String, resourcePath: String = ""): String = {
-    if(absolutePath != null && absolutePath.nonEmpty) {
-      absolutePath
-    }
-    else {
-      // We need to use the class loader to get the URI so that the path does not depend on whether the program is run
-      // using jar file or without it
-      getClass.getClassLoader.getResource(resourcePath).toURI.toString
-    }
+  def extractAuthorsFromPublication(publication: String): Iterator[String] = {
+    val regexMatch = authorsPattern.findAllMatchIn(publication)
+    regexMatch.map(_.group("author"))
+  }
+
+  /**
+    * Finds the publication venue of the given publication. If more than one tags are found that denote a publication
+    * venue, the value of the first tag will be returned.
+    *
+    * @param publication XML string representing a single publication from the input XML file.
+    * @return Value of the first publication venue tag found; `None` if no publication venue could be found.
+    */
+  def extractPublicationVenueFromPublication(publication: String): Option[String] = {
+    publicationVenuePattern.findFirstMatchIn(publication).map(_.group("venue"))
   }
 }

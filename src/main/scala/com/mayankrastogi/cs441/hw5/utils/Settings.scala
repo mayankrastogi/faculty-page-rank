@@ -19,11 +19,6 @@ class Settings(config: Config) {
 
   val facultyListFile: String = getString("faculty-list-file")
 
-  // DBLP DTD File Location
-
-  val dblpDTDAbsolutePath: String = getString("dblp-dtd.absolute-path")
-  val dblpDTDResourcePath: String = getString("dblp-dtd.resource-path")
-
   // Spark Job Config
 
   val jobName: String = getString("job.name")
@@ -48,12 +43,12 @@ class Settings(config: Config) {
 
   private def getLong(path: String): Long = config.getLong(configPath(path))
 
+  /** Prefixes root key to the specified path to avoid typing it each time a parameter is fetched. */
+  private def configPath(path: String): String = s"${Settings.CONFIG_NAMESPACE}.$path"
+
   private def getString(path: String): String = config.getString(configPath(path))
 
   private def getStringList(path: String): List[String] = config.getStringList(configPath(path)).asScala.toList
-
-  /** Prefixes root key to the specified path to avoid typing it each time a parameter is fetched. */
-  private def configPath(path: String): String = s"${Settings.CONFIG_NAMESPACE}.$path"
 }
 
 /** Companion object to define "static" members for Settings class */

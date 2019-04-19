@@ -10,8 +10,6 @@ import org.apache.hadoop.io.{LongWritable, Text}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 
-import scala.xml.{Elem, XML}
-
 /**
   * Configures the Spark job and runs it.
   */
@@ -21,7 +19,6 @@ object DBLPPageRank extends LazyLogging {
   private val settings = new Settings(ConfigFactory.load())
 
   private val facultyLookupTable: Map[String, String] = Utils.getFacultyLookupTable(settings.facultyListFile)
-  private val dblpDTDPath = Utils.getDTDFilePath(settings.dblpDTDAbsolutePath, settings.dblpDTDResourcePath)
 
   /**
     * Runs the spark job.
@@ -49,6 +46,7 @@ object DBLPPageRank extends LazyLogging {
       }
     }
 
+    // If 4th argument is "local", the Spark job should be run in local mode
     val localMode = args.length > 3 && args(3).equalsIgnoreCase("local")
 
     // Run the spark job
@@ -96,9 +94,6 @@ object DBLPPageRank extends LazyLogging {
 
     // Extract authors and publication venues from each publication
     val authorsAndVenues = publications
-      // Create an XML document from each publication read from the XML input file
-      .map(createValidXML)
-      // Extract authors and publication venues from each publication
       .flatMap(extractAuthorsAndVenues)
       // Remove any duplicate entries
       .distinct()
@@ -123,73 +118,41 @@ object DBLPPageRank extends LazyLogging {
   }
 
   /**
-    * Wraps the input XML string between the dblp.xml's DOCTYPE so that HTML entities can be understood by the XML
-    * parser.
+    * Extracts the publication venue and a list of authors that are affiliated with UIC CS department.
     *
-    * @param publicationXMLString The XML string received from the XmlInputFormat.
-    * @return The parsed XML node with `dblp` as the root node.
-    */
-  def createValidXML(publicationXMLString: String): Elem = {
-    logger.trace(s"createValidXML(publicationXMLString: $publicationXMLString)")
-
-    // Wrap the XML subset in a format which will be valid according to the DTD
-    val xmlString =
-      s"""<?xml version="1.0" encoding="ISO-8859-1"?><!DOCTYPE dblp SYSTEM "$dblpDTDPath"><dblp>$publicationXMLString</dblp>"""
-
-    // Parse the XML
-    XML.loadString(xmlString)
-  }
-
-  /**
-    * Extracts a list of authors from this publication and its publication venue. Each author links to every other
-    * author from this publication along with the publication venue, while the publication venue does not have any
-    * outgoing links.
+    * Each author links to every other author from this publication along with the publication venue, while the
+    * publication venue does not have any outgoing links. If either authors or publication venue could not be extracted,
+    * an empty sequence will be returned.
     *
-    * @param publicationElement The root node of the XML document (The root must be &lt;dblp&gt;)
+    * @param publicationXml String representing a single publication from the input XML file
     * @return List of authors extracted from the publication paired with every other author of this publication and its
     *         venue.
     */
-  def extractAuthorsAndVenues(publicationElement: Elem): Seq[(String, Seq[String])] = {
-    logger.trace(s"extractAuthorsAndVenues(publicationElement: $publicationElement)")
+  def extractAuthorsAndVenues(publicationXml: String): Seq[(String, Seq[String])] = {
+    logger.trace(s"extractAuthorsAndVenues(publicationElement: $publicationXml)")
 
-    // Find the type of publication
-    val publicationType = publicationElement.child.head.label
+    // Extract authors from the publication that are affiliated with UIC CS department
+    val authors = Utils.extractAuthorsFromPublication(publicationXml).collect {
+      case author if facultyLookupTable.contains(author) => facultyLookupTable(author)
+    }.toSeq
 
-    // Identify the tag which contains the value of publication venue for this type publication
-    val publicationVenueLookupTag = publicationType match {
-      case "article" => "journal"
-      case "book" => "publisher"
-      case "mastersthesis" | "phdthesis" => "school"
-      case _ => "booktitle"
+    // Extract the publication venue
+    val publicationVenue = Utils.extractPublicationVenueFromPublication(publicationXml)
+
+    // If publication venue could not be extracted or the publication is not by any UIC CS department faculty,
+    // return an empty sequence
+    if (authors.isEmpty) {
+      logger.trace("No author affiliated with UIC CS department found in the publication")
+      Seq()
     }
-
-    // Identify the tag which contains the value of authors for this type publication
-    val authorLookupTag = publicationType match {
-      case "book" | "proceedings" => "editor"
-      case _ => "author"
+    else if (publicationVenue.isEmpty) {
+      logger.warn(s"No publication venue could be extracted from a publication by UIC faculty:\n$publicationXml")
+      Seq()
     }
-
-    try {
-      // Extract the publication venue from this publication and add it to the accumulator
-      val publicationVenue = (publicationElement \\ publicationVenueLookupTag).head.text
-
-      // Extract the authors of this publication accounting for alternate names of UIC CS faculty
-      val authors = (publicationElement \\ authorLookupTag).collect {
-        case node if facultyLookupTable.contains(node.text) => facultyLookupTable(node.text)
-      }
-
-      // The publication venue does not have any outgoing links; Each author in this publication links to every other
-      // author along with the publication venue
-      if (authors.nonEmpty) {
-        Seq((publicationVenue, Seq())) ++ authors.map(author => (author, authors.filterNot(_.equals(author)) ++ Seq(publicationVenue)))
-      } else {
-        Seq()
-      }
-    }
-    catch {
-      case _: NoSuchElementException =>
-        logger.warn(s"Could not find tag <$publicationVenueLookupTag> in publication of type <$publicationType>")
-        Seq()
+    // Otherwise, add every other author to the adjacency list of each author, along with the publication
+    else {
+      val venue = publicationVenue.get
+      authors.map(author => (author, authors.filterNot(author.equals) ++ Seq(venue))) ++ Seq((venue, Seq()))
     }
   }
 

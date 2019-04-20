@@ -1,95 +1,309 @@
-# Homework 5
-### Description: you will gain experience with the Spark computational model.
-### Grade: 5% + bonus up to 3% for deploying your Spark program on [AWS EMR](https://aws.amazon.com/emr).
-#### You can obtain this Git repo using the command ```git clone git@bitbucket.org:cs441_spring2019/homework5.git```. You cannot push your code into this repo, otherwise, your grade for this homework will be ZERO!
+## CS 441 - Engineering Distributed Objects for Cloud Computing
+## Homework 5 - Faculty Page Rank
 
-## Preliminaries - feel free to skip this section if you already read it in the previous homeworks.
-If you have not already done so as part of your previous homeworks, you must create your account at [BitBucket](https://bitbucket.org/), a Git repo management system. It is imperative that you use your UIC email account that has the extension @uic.edu. Once you create an account with your UIC address, BibBucket will assign you an academic status that allows you to create private repos. Bitbucket users with free accounts cannot create private repos, which are essential for submitting your homeworks and the course project. Your instructor created a team for this class named [cs441_Spring2019](https://bitbucket.org/cs441_spring2019/). Please contact your TA [Shen Wang](swang224@uic.edu) from your **UIC.EDU** account and they will add you to the team repo as developers, since they already have the admin privileges. Please use your emails from the class registration roster to add you to the team and you will receive an invitation from BitBucket to join the team. Since it is still a large class, please use your UIC email address for communications or Piazza and avoid emails from other accounts like funnybunny1992@gmail.com. If you don't receive a response within 12 hours, please contact us via Piazza, it may be a case that your direct emails went to the spam folder.
+---
 
-In case you have not done so, you will install [IntelliJ](https://www.jetbrains.com/student/) with your academic license, the JDK, the Scala runtime and the IntelliJ Scala plugin, the [Simple Build Toolkit (SBT)](https://www.scala-sbt.org/1.x/docs/index.html) and make sure that you can create, compile, and run Java and Scala programs. Please make sure that you can run [Java monitoring tools](https://docs.oracle.com/javase/8/docs/technotes/guides/troubleshoot/tooldescr025.html) or you can choose a newer JDK and tools if you want to use a more recent one.
+### Overview
 
-Please set up your account with [AWS Educate](https://aws.amazon.com/education/awseducate/). Using your UIC email address will enable you to receive free credits for running your jobs in the cloud.
+The objective of this homework was to process the [DBLP](https://dblp.uni-trier.de/) dataset using **Apache Spark framework** to find out the **Page Rank** of publications made by faculty in the Department of Computer Science at the University of Illinois at Chicago.
 
-You will use logging and configuration management frameworks. You will comment your code extensively and supply logging statements at different logging levels (e.g., TRACE, INFO, ERROR) to record information at some salient points in the executions of your programs. All input and configuration variables must be supplied through configuration files -- hardcoding these values in the source code is prohibited and will be punished by taking a large percentage of points from your total grade! You are expected to use [Logback](https://logback.qos.ch/) and [SLFL4J](https://www.slf4j.org/) for logging and [Typesafe Conguration Library](https://github.com/lightbend/config) for managing configuration files. These and other libraries should be exported into your project using your script [build.sbt](https://www.scala-sbt.org/1.0/docs/Basic-Def-Examples.html). These libraries and frameworks are widely used in the industry, so learning them is the time well spent to improve your resume.
+### Instructions
 
-As before, when writing your program code in Scala, you should avoid using **var**s and while/for loops that iterate over collections using [induction variables](https://en.wikipedia.org/wiki/Induction_variable). Instead, you should learn to use collection methods **map**, **flatMap**, **foreach**, **filter** and many others with lambda functions, which make your code linear and easy to understand. Also, avoid mutable variables at all cost. Points will be deducted for having many **var**s and inductive variable loops without explanation why mutation is needed in your code - you can always do without it.
+#### My Environment
 
-## Overview
-In this homework, you will create a Spark program for parallel processing of the [publically available DBLP dataset](https://dblp.uni-trier.de) that contains entries for various publications at many different venues (e.g., conferences and journals). Raw [XML-based DMBLP dataset](https://dblp.uni-trier.de/xml) is also publically available along with its schema and the documentation. If you completed homework 2, you can skip the description of the dataset.
+The project was developed using the following environment:
 
-Each entry in the dataset describes a publication, which contains the list of authors, the title, and the publication venue and a few other attributes. The file is approximately 2.5Gb - not big by today's standards, but large enough for this homework assignment. Each entry is independent from the other one in that it can be processed without synchronizing with processing some other entries.
+- **OS:** Windows 10
+- **IDE:** IntelliJ IDEA Ultimate 2018.3
+- **Hypervisor:** VMware Workstation 15 Pro
+- **Hadoop Distribution:** [Hortonworks Data Platform (3.0.1) Sandbox](https://hortonworks.com/products/sandbox/) deployed on VMware
 
-Consider the following entry in the dataset.
+#### Prerequisites
+
+- [HDP Sandbox](https://hortonworks.com/products/sandbox/) set up and deployed on (VMware or VirtualBox). Read this [guide](https://hortonworks.com/tutorial/learning-the-ropes-of-the-hortonworks-sandbox/) for instructions on how to set up and use HDP Sandbox
+- Ability to use SSH and SCP on your system
+- [SBT](https://www.scala-sbt.org/) installed on your system
+- [dblp.xml](https://dblp.uni-trier.de/xml/) downloaded on your system
+
+#### Running the map reduce job
+
+1. Clone or download this repository onto your system
+2. Open the Command Prompt (if using Windows) or the Terminal (if using Linux/Mac) and browse to the project directory
+3. Build the project and generate the jar file using SBT
+    
+    ```
+    sbt clean compile assembly
+    ```
+    
+4. Start HDP sandbox VM
+5. Copy the jar file  to HDP Sandbox VM
+    
+    ```
+    scp -P 2222 target/scala-2.11/mayank_k_rastogi_hw5-assembly-0.1.jar root@sandbox-hdp.hortonworks.com:~/
+    ```
+    
+6. Copy `dblp.xml` to HDP Sandbox
+    
+    ```
+    scp -P 2222 /path/to/dblp.xml root@sandbox-hdp.hortonworks.com:~/
+    ```
+    
+7. SSH into HDP Sandbox
+    
+    ```
+    ssh -p 2222 root@sandbox-hdp.hortonworks.com
+    ```
+    
+8. Create input directory on HDFS and copy `dblp.xml` there
+    
+    ```
+    hdfs dfs -mkdir input_dir
+    
+    hdfs dfs -put dblp.xml input_dir/
+    ```
+    
+9. Submit the Spark Application and run it in `cluster` mode
+    
+    ```
+    spark-submit --deploy-mode cluster mayank_k_rastogi_hw5-assembly-0.1.jar input_dir/dblp.xml output_dir
+    ```
+    
+    If you wish to run it in `local` mode instead, you will have to pass a parameter to the `jar` file specifying the number of iterations to run the page rank algorithm for, along with a parameter `"local"`
+    
+    ```
+    spark-submit mayank_k_rastogi_hw5-assembly-0.1.jar input_dir/dblp.xml output_dir 100 local
+    ```
+    
+10. Once the application is finished running, copy the output files from `output_dir` (on HDFS) to `page_rank_output` (on HDP Sandbox)
+    
+    ```
+    hdfs dfs -get output_dir page_rank_output
+    ```
+    
+11. Inside the `page_rank_output` directory, you will find the page ranks of UIC CS faculty under the `ranks_faculty` directory and the page ranks for their publications under the `ranks_venues` directory
+ 
+### Tutorial on how to deploy the the Spark application on AWS EMR
+
+```scala
+// TODO: update links
+```
+
+To see a demo of how this project can be deployed on AWS Elastic Map Reduce (EMR), see this [video on YouTube](https://youtu.be/HPHIGnEvVdk)
+
+[![How to deploy Apache Spark application on AWS Elastic Map Reduce (EMR)](https://img.youtube.com/vi/HPHIGnEvVdk/maxresdefault.jpg)](https://youtu.be/HPHIGnEvVdk)
+
+### Working of the Spark Application
+
+#### The `dblp.xml` file
+
+The `dblp.xml` file has `<dblp>` as the root element. Under `<dblp>`, we can have `<article>`, `<inproceedings>`, `<proceedings>`, `<book>`, `<incollection>`, `<phdthesis>`, `<mastersthesis>` or `<www>`. Since `<www>` holds information about an author and not a publication itself, we are ignoring this tag in our program.
+
+Except `<book>` and `<proceedings>`, each of these tags contain one or more `<author>` tags which denote an author for that publication. The `<book>` and `<proceedings>` tags have a similar tag `<editor>`. We treat both these tags as the same, which means that the presence of a faculty's name in either of these tags will count towards their total number of publications and collaborations.
+
+The publication venue can be denoted by any of `<journal>`, `<publisher>`, `<school>`, or `<booktitle>` tags. The first match of any of these tags in a publication is designated as its publication venue.
+
+#### Sharding the input file into logical splits
+
+The `MultiTagXmlInputFormat` takes care of sharding the `dblp.xml` file into logical subsets that are fed into the `DBLPPageRank.processPublications` method. It reads the `dblp.xml` file and looks for one of these start tags - `<article `, `<inproceedings `, `<proceedings `, `<book `, `<incollection `, `<phdthesis `, `<mastersthesis `. Once a match is found, it stores all the bytes that appear after the matched start tag, into a buffer, until the corresponding end tag is found. This forms our logical split. The start and end tags to look for can be configured using `dblp-page-rank.xml-input.start-tags` and `dblp-page-rank.xml-input.end-tags` configuration settings in `application.conf`.
+
+#### Extracting the authors and the publication venue from a publication
+
+Each XML string, denoting a single publication from the `dblp.xml` file, is matched with two **regular expressions** to extract information about its authors and the publication venue. The authors of the publication are extracted using the below regex pattern, where the second capturing group contains the name of the author:
+
+```regexp
+\<(author|editor).*>(.*)\<\/(author|editor)>
+```
+
+Likewise, the publication venue is extracted using the below regex pattern, where the second capturing group contains the name of the publication venue:
+
+```regexp
+\<\b(journal|publisher|school|booktitle)\b>(.*)\<\/(journal|publisher|school|booktitle)>
+```
+
+Regular Expressions were used instead of an XML parser because of the performance overhead of XML parsers. The XML in each publication of the `dblp.xml` file contains entities that are defined in the `dblp.dtd` file. XML parsers fail to parse this XML without the DTD file. If we include the DTD file, for each publication, the XML parser will need to construct its grammar using the DTD file before it is able to parse the publication, which is a very expensive process. In the [map-reduce homework](https://github.com/mayankrastogi/faculty-collaboration), we were able to cache the instance of our XML parser, by defining it as a member variable of our `FacultyCollaborationMapper` class, which allowed reuse of the grammar constructed from the DTD file. However, **XML parser is not thread-safe** and does not allow parsing of more than one XML documents at once. Since Spark, spawns multiple threads to process the input in parallel, we need to create a new instance of XML parser for every publication that we need to parse, making this process very slow.
+
+> For comparison, when my Spark application was using *XML parser* for this purpose, it took over **2 hours** to process the full **2.5 GB** `dblp.xml` file. In contrast, it takes just **4 minutes** to do the same using *Regular Expressions*!
+
+The `DBLPPageRank.extractAuthorsAndVenues` method extracts the authors and venues from a `String` representing a single publication from the `dblp.xml` file and matches them against the list of faculty that belong to UIC's CS department, which is defined in `src/main/resources/uic-cs-faculty-list.txt`. This file maps the different variations of a faculty's name (that are known to appear in the `dblp.xml` file) to the faculty's name as it appears on the [UIC CS Department Website](https://cs.uic.edu/faculty/?).
+
+Each author is linked to every other author from this publication along with the publication venue, while the publication venue does not have any outgoing links. If either authors or publication venue could not be extracted, an empty sequence is returned.
+
+Consider the following publication in `dblp.xml`:
+
 ```xml
 <inproceedings mdate="2017-05-24" key="conf/icst/GrechanikHB13">
-<author>Mark Grechanik</author>
-<author>B. M. Mainul Hossain</author>
-<author>Ugo Buy</author>
-<title>Testing Database-Centric Applications for Causes of Database Deadlocks.</title>
-<pages>174-183</pages>
-<year>2013</year>
-<booktitle>ICST</booktitle>
-<ee>https://doi.org/10.1109/ICST.2013.19</ee>
-<ee>http://doi.ieeecomputersociety.org/10.1109/ICST.2013.19</ee>
-<crossref>conf/icst/2013</crossref>
-<url>db/conf/icst/icst2013.html#GrechanikHB13</url>
+    <author>Mark Grechanik</author>
+    <author>B. M. Mainul Hossain</author>
+    <author>Ugo Buy</author>
+    <title>Testing Database-Centric Applications for Causes of Database Deadlocks.</title>
+    <pages>174-183</pages>
+    <year>2013</year>
+    <booktitle>ICST</booktitle>
+    <ee>https://doi.org/10.1109/ICST.2013.19</ee>
+    <ee>http://doi.ieeecomputersociety.org/10.1109/ICST.2013.19</ee>
+    <crossref>conf/icst/2013</crossref>
+    <url>db/conf/icst/icst2013.html#GrechanikHB13</url>
 </inproceedings>
 ```
 
-This entry lists a paper at the IEEE International Conference on Software Testing, Verification and Validation (ICST) published in 2013 whose authors are my former Ph.D. student at UIC, now tenured Associate Professor at the University of Dhaka, Dr. B.M. Mainul Hussain whose advisor Mark Grechanik is a co-author on this paper. The third co-author is Prof.Ugo Buy, a faculty member at our CS department. The presence of two authors, Mark Grechanik and Ugo Buy in a single publication like this one establishes a connection between these faculty members. Depending on the importance of these nodes, ICST may have the highest pagerank value followed by... well, it is up to you to find out!
+The list of authors from this publication will be `Seq("Mark Grechanik", "Ugo Buy")` and the publication venue will be `"ICST"`. Hence, the output of this method will be:
 
-As before, this homework script is written using a retroscripting technique, in which the homework outlines are generally and loosely drawn, and the individual students improvise to create the implementation that fits their refined objectives. In doing so, students are expected to stay within the basic requirements of the homework and they are free to experiments. Asking questions is important, so please ask away at Piazza!
+```scala
+Seq(
+  ("Mark Grechanik", Set("Ugo Buy", "ICST")),
+  ("Ugo Buy", Set("Mark Grechanik", "ICST")),
+  ("ICST", Set())
+)
+```
 
-## Functionality
-Your homework assignment is to create a program for computing PageRank values for authors and publication venues (i.e., booktitles) using the Spark model for parallel processing of the publication dataset. If you do not know what PageRank is and how it works, you may find many tutorials, papers, and books on the Internet, one of which is from [Princeton University](http://www.cs.princeton.edu/~chazelle/courses/BIB/pagerank.htm). In this homework, we view the publication data as a graph where nodes are professors and publication venues and the edges represent co-authorships of some papers and the facts of publishing these papers by its author(s) at some venue. That is, in our example above, Mark, Mainul and Ugo are represented by nodes that are connected to one another and these nodes are also connected to the node that represents ICST. An analogy to the WWW is that each node represents a web page and the edges represent h-references among these web pages. Browsing this data means selecting a node, which is incident to some edge and following this edge to arrive to some other node. 
+The `DBLPPageRank.processPublication` method will then flatten this list and reduce the set of edges for each author/venue by merging all the sets of edges belonging to the same author/venue.
 
-Your goal is to compute PageRank values for all nodes in the DBLP dataset. Your job is to design the algorithm PageRank using Apache Spark for this task and then to implement it and run on the DBLP dataset. The output of your program produces a list of authors and publication venues with their PageRank values. Of course, this list will be large, so you can limit the output to the UIC CS faculty and top publication venues for each faculty based on the global pagerank values for these venues.
+#### Computing the Page Rank
 
-To get you started, you may play around with many tutorials on implementing algorithms in Spark, specifically, I recommend a [Hortonworks tutorial on PageRank example in Spark](https://community.hortonworks.com/idea/102753/tutorial-101-pagerank-example-in-spark-20-understa.html). Of course, simply copying the code will get you nowhere, so you will need to think how to map the dataset onto the full-fledged PageRank algorithm. Considering that you already implemented map/reduce program in your second howework and deployed it on AWS EMR, this homework is almost a free grade for y'all! :-)
+Once we obtain our RDD from the `DBLPPageRank.processPublication` method in the format described above, we use the `DBLPPageRank.computePageRank` method to find the page rank for each author and venue.
 
-You will create and run your software application using [Apache Spark](https://spark.apache.org/), a framework for distributed processing of large data sets across multiple computers (or even on a single node) using iterative algorithms, such as PageRank. If your laptop/workstation is limited in its RAM, you can use [Cloudera QuickStart VM with the minimum req of RAM 4Gb](https://www.cloudera.com/downloads/quickstart_vms/5-12.html). Even though you can install and configure Spark on your computers, I recommend that you use a virtual machine (VM) of [Hortonworks Sandbox](http://hortonworks.com/products/sandbox/), a preconfigured Apache Spark installation with a comprehensive software stack. To run the VM, you can install vmWare or VirtualBox. As UIC students, you have access to free vmWare licenses, go to http://go.uic.edu/csvmware to obtain your free license. In some cases, I may have to provide your email addresses to a department administrator to enable your free VM academic licenses. Please notify me if you cannot register and gain access to the webstore.
+With the default configuration, the page rank algorithm will run for `100` **iterations** using a **damping factor** of `0.85`. These values can be changed using the `dblp-page-rank.job.max-iterations` and `dblp-page-rank.job.damping-factor` configuration settings respectively. The number of iterations can also be specified using the *3rd* parameter passed to the `jar` file.
 
-The steps for obtaining your free academic vmWare licenses are the following:
-- Go to [Onthehub vmWare](http://go.uic.edu/csvmware).
-- Click on the "sign in" link at the top.
-- Click on "register".
-- Select "An account has been created..." and continue with the registration.
-- Make sure that you use the UIC email with which you are registered with the system.
+The output RDD from this method will contain the author/venue name as the key and their page ranks as the value.
 
-Only UIC students who are registered for this course are eligible. If you are auditing the course, you need to contact the uic webstore directly. Alternatively, you can use [VirtualBox from Oracle Corp](https://www.virtualbox.org/).
+The `DBLPPageRank.writePageRankOutput` method writes the Page Rank values computed to disk, creating separate directories for page rank values of UIC CS faculty and the publication venues. Both the lists are sorted in descending order of their page ranks.
 
-You can complete this homework using Scala and __you will immensely enjoy__ the embedded XML processing facilities that come with Scala. You will use Simple Build Tools (SBT) for building the project and running automated tests. I recommend that you run the downloaded VM locally in vmWare or VirtualBox to develop and test your program before you move it to AWS.
+### Results ###
 
-Next, after creating and testing your Spark program locally, you will deploy it and run it on the Amazon Elastic MapReduce (EMR) - you can find plenty of [documentation online](https://docs.aws.amazon.com/emr/latest/ReleaseGuide/emr-spark-application.html). You will produce a short movie that documents all steps of the deployment and execution of your program with your narration and you will upload this movie to [youtube](www.youtube.com) and you will submit a link to your movie as part of your submission in the README.md file. To produce a movie, you may use an academic version of [Camtasia](https://shop.techsmith.com/store/techsm/en_US/cat/categoryID.67158100) or some other cheap/free screen capture technology from the UIC webstore or an application for a movie capture of your choice. The captured web browser content should show your login name in the upper right corner of the AWS application and you should introduce yourself in the beginning of the movie speaking into the camera.
+#### Page Ranks for faculty of Computer Science department at UIC:
 
-## Baseline Submission
-Your baseline project submission should include your Apache Spark implementation of PageRank, a conceptual explanation in the document or in the comments in the source code of how your iterative algoritnm works to solve the problem, and the documentation that describe the build and runtime process, to be considered for grading. Your project submission should include all your source code written in Scala as well as non-code artifacts (e.g., configuration files), your project should be buildable using the SBT, and your documentation must specify how you paritioned the data and what input/outputs are. Simply copying Java programs from examples at the DBLP website and modifying them a bit will result in rejecting your submission.
+```text
+Robert Sloan	0.20812250006011176
+Bhaskar DasGupta	0.1865058346647529
+Tanya Berger-Wolf	0.1730468043828001
+Ouri Wolfson	0.16754491226824508
+Barbara Di Eugenio	0.16631469239723848
+Prasad Sistla	0.1652366636496375
+Ugo Buy	0.16512918261459353
+Philip S. Yu	0.16268042513647324
+Brian Ziebart	0.16246655772258892
+Chris Kanich	0.16185446154345237
+Bing Liu	0.16081339184684926
+Robert Kenyon	0.1602390814618725
+Andrew Johnson	0.15939901665716816
+Peter Nelson	0.15820967546485268
+Jon Solworth	0.15615759162877835
+Isabel Cruz	0.15596091578092944
+Lenore Zuck	0.15570424552920614
+G. Elisabeta Marai	0.15544812876970368
+Jason Polakis	0.15458587641039784
+V. N. Venkatakrishnan	0.1541403033289128
+Luc Renambot	0.1539246838044914
+Daniel J. Bernstein	0.15368705424679063
+Xinhua Zhang	0.15363412037011057
+Ajay Kshemkalyani	0.1534234098834733
+Mark Grechanik	0.1534234098834733
+Patrick Troy	0.15280800198493805
+Anastasios Sidiropoulos	0.15220180499257002
+Nasim Mobasheri	0.15220180499257002
+```
 
-## Piazza collaboration
-You can post questions and replies, statements, comments, discussion, etc. on Piazza. For this homework, feel free to share your ideas, mistakes, code fragments, commands from scripts, and some of your technical solutions with the rest of the class, and you can ask and advise others using Piazza on where resources and sample programs can be found on the internet, how to resolve dependencies and configuration issues. When posting question and answers on Piazza, please select the appropriate folder, i.e., hw5 to ensure that all discussion threads can be easily located. Active participants and problem solvers will receive bonuses from the big brother :-) who is watching your exchanges on Piazza (i.e., your class instructor). However, *you must not describe your PageRank design for Spark or specific details related how your construct your Spark deployment!*
+#### Page Ranks for (Top 100) publication venues where faculty of Computer Science department at UIC have published:
 
-## Git logistics
-**This is an individual homework.** Separate repositories will be created for each of your homeworks and for the course project. You will find a corresponding entry for this homework at git@bitbucket.org:cs441_spring2019/homework2.git. You will fork this repository and your fork will be private, no one else besides you, the TA and your course instructor will have access to your fork. Please remember to grant a read access to your repository to your TA and your instructor. In future, for the team homeworks and the course project, you should grant the write access to your forkmates, but NOT for this homework. You can commit and push your code as many times as you want. Your code will not be visible and it should not be visible to other students (except for your forkmates for a team project, but not for this homework). When you push the code into the remote repo, your instructor and the TA will see your code in your separate private fork. Making your fork public, pushing your code into the main repo, or inviting other students to join your fork for an individual homework will result in losing your grade. For grading, only the latest push timed before the deadline will be considered. **If you push after the deadline, your grade for the homework will be zero**. For more information about using the Git and Bitbucket specifically, please use this [link as the starting point](https://confluence.atlassian.com/bitbucket/bitbucket-cloud-documentation-home-221448814.html). For those of you who struggle with the Git, I recommend a book by Ryan Hodson on Ry's Git Tutorial. The other book called Pro Git is written by Scott Chacon and Ben Straub and published by Apress and it is [freely available](https://git-scm.com/book/en/v2/). There are multiple videos on youtube that go into details of the Git organization and use.
-
-Please follow this naming convention while submitting your work : "Firstname_Lastname_hw2" without quotes, where you specify your first and last names **exactly as you are registered with the University system**, so that we can easily recognize your submission. I repeat, make sure that you will give both your TA and the course instructor the read access to your *private forked repository*.
-
-## Discussions and submission
-You can post questions and replies, statements, comments, discussion, etc. on Piazza. Remember that you cannot share your code and your solutions privately, but you can ask and advise others using Piazza and StackOverflow or some other developer networks where resources and sample programs can be found on the Internet, how to resolve dependencies and configuration issues. Yet, your implementation should be your own and you cannot share it. Alternatively, you cannot copy and paste someone else's implementation and put your name on it. Your submissions will be checked for plagiarism. **Copying code from your classmates or from some sites on the Internet will result in severe academic penalties up to the termination of your enrollment in the University**. When posting question and answers on Piazza, please select the appropriate folder, i.e., hw1 to ensure that all discussion threads can be easily located.
-
-
-## Submission deadline and logistics
-Thursday, April 18 at 8PM CST via the bitbucket repository. Your submission will include the code for the map/reduce program, your documentation with instructions and detailed explanations on how to assemble and deploy your Spark Pagerank along with the results of its run, and a document that explains how you designed and implemented the program, and what the limitations of your implementation are. Again, do not forget, please make sure that you will give both your TA and your instructor the read access to your private forked repository. Your name should be shown in your README.md file and other documents. Your code should compile and run from the command line using the commands ```sbt clean compile test``` and ```sbt clean compile run```. Also, you project should be IntelliJ friendly, i.e., your graders should be able to import your code into IntelliJ and run from there. Use .gitignore to exlude files that should not be pushed into the repo.
-
-
-## Evaluation criteria
-- the maximum grade for this homework is 5% with the bonus up to 3% for doing the AWS EMR part. Points are subtracted from this maximum grade: for example, saying that 2% is lost if some requirement is not completed means that the resulting grade will be 5%-2% => 3%; if the core homework functionality does not work, no bonus points will be given;
-- the code does not work in that it does not produce a correct output or crashes: up to 5% lost;
-- having less than five unit and/or integration tests that test the main functionality: up to 4% lost;
-- missing comments and explanations from the program: up to 3% lost;
-- logging is not used in the program: up to 3% lost;
-- hardcoding the input values in the source code instead of using the suggested configuration libraries: up to 4% lost;
-- no instructions in README.md on how to install and run your program: up to 4% lost;
-- the documentation exists but it is insufficient to understand how you assembled and deployed all components of the cloud: up to 4% lost;
-- the minimum grade for this homework cannot be less than zero.
-
-That's it, folks!
+```text
+CoRR	0.22418167538097258
+SIGCSE	0.2020377460635816
+Computers and Electronics in Agriculture	0.19329560056239914
+Algorithmica	0.1849269742713601
+Inf. Sci.	0.1812153449818695
+Discrete Applied Mathematics	0.18088411382624495
+ACM Conference on Computer and Communications Security	0.17498902396818522
+USENIX Security Symposium	0.17084872063927245
+IEEE Symposium on Security and Privacy	0.17030713298037017
+Inf. Process. Lett.	0.16665990218621965
+CollaborateCom	0.16665396452525535
+Theor. Comput. Sci.	0.16531620508137443
+J. Comput. Syst. Sci.	0.16484856831592704
+ACSAC	0.16464721957395026
+PerCom Workshops	0.16433816893776776
+NDSS	0.16381207674864154
+ASONAM	0.16356154368035852
+AISec@CCS	0.16347591657846192
+SIGMOD Conference	0.16312875772749438
+CODASPY	0.16269646027960077
+Commun. ACM	0.16253241903154803
+IEEE Trans. Systems, Man, and Cybernetics, Part A	0.16217332003974055
+VR	0.16207665801241916
+IJCAI	0.1620422547765723
+ICSE	0.16190432698808283
+SODA	0.1618208668593653
+ESORICS	0.16175097602968216
+COLT	0.16166444746891506
+CAV	0.16153399375267624
+IEEE Visualization	0.16103289289119044
+IEEE Computer Graphics and Applications	0.16103289289119044
+IEEE Trans. Information Theory	0.16083335298770338
+STOC	0.16078663241153912
+Future Generation Comp. Syst.	0.16074812685882892
+Formal Methods in System Design	0.1603717151973241
+AAAI	0.1603226775382695
+WWW	0.16031690680661717
+IEEE Trans. Software Eng.	0.16029646174342513
+CHI	0.16000274894048988
+CIKM	0.1599999244661671
+Visualization and Data Analysis	0.15985249241817862
+Advances in Computers	0.15966131757762136
+Artif. Intell.	0.1594538459480899
+QRS	0.1594094072151929
+AsiaCCS	0.15939129977599675
+ISSTA	0.1592642002033172
+IEEE Trans. Parallel Distrib. Syst.	0.15926128276075255
+Social Netw. Analys. Mining	0.15923244312689083
+DIMVA	0.15922620033824372
+SC	0.15921464893781406
+Inf. Comput.	0.15915011030642082
+UbiComp Adjunct	0.15908224913981422
+Electronic Colloquium on Computational Complexity (ECCC)	0.15905266742262317
+NIPS	0.15900081885443645
+IVA	0.15877046088722538
+IPDPS Workshops	0.15873346420194265
+Comput. Graph. Forum	0.1585984237383807
+CLUSTER	0.15854632186625892
+J. Parallel Distrib. Comput.	0.15845337644754026
+PDIS	0.15841752713323118
+SPAA	0.15828302813736977
+ICDM Workshops	0.15826595947725114
+ACM Trans. Softw. Eng. Methodol.	0.15819016320729512
+VMCAI	0.15811058386920296
+Journal of Computer Security	0.15811058386920296
+PLAS	0.15811058386920296
+ICDE	0.15795480651626387
+EMBC	0.15785943669962796
+HVEI	0.15785943669962796
+EuroVis (Short Papers)	0.15785943669962796
+PVLDB	0.15771084282130543
+IEEE Trans. Knowl. Data Eng.	0.15767079414723728
+NSPW	0.1576573347870808
+LISA	0.1576573347870808
+Symposium on Computational Geometry	0.15762556937949548
+ALT	0.15762158702379991
+SIAM J. Discrete Math.	0.15759592667260658
+FLAIRS Conference	0.15753605332454648
+ICML	0.15751467555333148
+ACM Comput. Surv.	0.1574486477621531
+Distributed and Parallel Databases	0.1573434901372091
+Encyclopedia of Cryptography and Security (2nd Ed.)	0.15731987018413052
+COMPSAC	0.1572783047155009
+VRAIS	0.15723088092968518
+AH	0.15723088092968518
+Presence	0.15723088092968518
+WABI	0.15722489296878617
+HPDC	0.1571816426881795
+Bioinformatics	0.15715928208650898
+BMC Bioinformatics	0.15715928208650898
+INFOCOM	0.15705678247940527
+IACR Cryptology ePrint Archive	0.15703664389063093
+SPACE	0.15703664389063093
+CSAW	0.15703664389063093
+J. Algorithms	0.15692075209244888
+SIGACT News	0.15685086243005317
+Massachusetts Institute of Technology, Cambridge, MA, USA	0.15685086243005317
+SSDBM	0.1568200919922103
+BHI	0.15681567157839923
+AISTATS	0.15679901386186645
+```

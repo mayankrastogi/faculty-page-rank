@@ -1,6 +1,7 @@
 package com.mayankrastogi.cs441.hw5.tests
 
 import com.mayankrastogi.cs441.hw5.DBLPPageRank
+import org.apache.spark.{SparkConf, SparkContext}
 import org.scalatest.Inspectors._
 import org.scalatest.{FunSuite, Matchers}
 
@@ -67,13 +68,13 @@ class DBLPPageRankTest extends FunSuite with Matchers {
       .toString()
 
   test("Empty sequence should be returned if no UIC faculty are part of an article") {
-    val authors = DBLPPageRank.extractAuthorsAndVenues(xmlWithNoUICFaculty)
+    val authors = DBLPPageRank.extractAuthorsAndVenueFromPublication(xmlWithNoUICFaculty)
 
     authors shouldBe empty
   }
 
   test("Only UIC faculty should be extracted from a valid article") {
-    val authors = DBLPPageRank.extractAuthorsAndVenues(xmlWithOneUICFaculty).map(_._1)
+    val authors = DBLPPageRank.extractAuthorsAndVenueFromPublication(xmlWithOneUICFaculty).map(_._1)
 
     authors should not be empty
     authors should contain("Mark Grechanik")
@@ -81,27 +82,27 @@ class DBLPPageRankTest extends FunSuite with Matchers {
   }
 
   test("UIC faculty with alternate names should get mapped with primary name when publication lists primary name") {
-    val authors = DBLPPageRank.extractAuthorsAndVenues(xmlWithFacultyWithAlternateNameListedWithPrimaryName).map(_._1)
+    val authors = DBLPPageRank.extractAuthorsAndVenueFromPublication(xmlWithFacultyWithAlternateNameListedWithPrimaryName).map(_._1)
 
     authors should not contain "Ugo A. Buy"
     authors should contain("Ugo Buy")
   }
 
   test("UIC faculty with alternate names should get mapped with primary name when publication lists alternate name") {
-    val authors = DBLPPageRank.extractAuthorsAndVenues(xmlWithTwoUICFaculty).map(_._1)
+    val authors = DBLPPageRank.extractAuthorsAndVenueFromPublication(xmlWithTwoUICFaculty).map(_._1)
 
     authors should not contain "Ugo A. Buy"
     authors should contain("Ugo Buy")
   }
 
   test("UIC faculty with no alternate names should get mapped with primary name") {
-    val authors = DBLPPageRank.extractAuthorsAndVenues(xmlWithOneUICFaculty).map(_._1)
+    val authors = DBLPPageRank.extractAuthorsAndVenueFromPublication(xmlWithOneUICFaculty).map(_._1)
 
     authors should contain("Mark Grechanik")
   }
 
   test("Adjacent nodes for an author should contain all other authors of a publication and the venue; venue should not have adjacent nodes") {
-    val authorsAndVenues = DBLPPageRank.extractAuthorsAndVenues(xmlWithTwoUICFaculty)
+    val authorsAndVenues = DBLPPageRank.extractAuthorsAndVenueFromPublication(xmlWithTwoUICFaculty)
     val venue = authorsAndVenues.find(_._1.equals("Formal Methods in System Design")).get
 
     venue._1 shouldBe "Formal Methods in System Design"
@@ -114,5 +115,59 @@ class DBLPPageRankTest extends FunSuite with Matchers {
       neighbors should not contain author
       neighbors should contain(venue._1)
     }
+  }
+
+  // =======================================================
+  // Integration Tests for Page Rank Computation using Spark
+  // =======================================================
+
+  test("Correct page rank values should be calculated for a single publication") {
+    withSparkContext { sc =>
+      val expectedRanks = Map(
+        "Ugo Buy" -> 0.26087,
+        "Robert Sloan" -> 0.26087,
+        "Formal Methods in System Design" -> 0.37174
+      )
+      val publications = sc.parallelize(Seq(xmlWithTwoUICFaculty))
+      val authorsAndVenues = DBLPPageRank.processPublications(publications)
+      val actualRanks = DBLPPageRank.computePageRank(authorsAndVenues, 40, 0.85).collect()
+
+      forEvery(actualRanks) { case (node, rank) => rank should be(expectedRanks(node) +- 0.01) }
+    }
+  }
+
+  test("Correct page rank values should be calculated for two publications with one common author") {
+    withSparkContext { sc =>
+      val expectedRanks = Map(
+        "Mark Grechanik" -> 0.24301,
+        "Ugo Buy" -> 0.21885,
+        "Advances in Computers" -> 0.21885,
+        "ICST" -> 0.31187
+      )
+      val publications = sc.parallelize(Seq(
+        xmlWithOneUICFaculty,
+        xmlWithFacultyWithAlternateNameListedWithPrimaryName
+      ))
+      val authorsAndVenues = DBLPPageRank.processPublications(publications)
+      val actualRanks = DBLPPageRank.computePageRank(authorsAndVenues, 40, 0.85).collect()
+
+      forEvery(actualRanks) { case (node, rank) => rank should be(expectedRanks(node) +- 0.01) }
+    }
+  }
+
+  /**
+    * Loans a `SparkContext` to the `testMethod` for testing purposes and cleans up after the test is finished.
+    *
+    * @param testMethod Testing code that needs a Spark Context.
+    */
+  private def withSparkContext(testMethod: SparkContext => Any) {
+    val conf = new SparkConf()
+      .setMaster("local")
+      .setAppName("Spark test")
+    val sparkContext = SparkContext.getOrCreate(conf)
+    try {
+      testMethod(sparkContext)
+    }
+    finally sparkContext.stop()
   }
 }

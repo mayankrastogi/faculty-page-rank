@@ -84,13 +84,9 @@ The project was developed using the following environment:
  
 ### Tutorial on how to deploy the the Spark application on AWS EMR
 
-```scala
-// TODO: update links
-```
+To see a demo of how this project can be deployed on AWS Elastic Map Reduce (EMR), see this [video on YouTube](https://youtu.be/Ako_EXuIyPs)
 
-To see a demo of how this project can be deployed on AWS Elastic Map Reduce (EMR), see this [video on YouTube](https://youtu.be/HPHIGnEvVdk)
-
-[![How to deploy Apache Spark application on AWS Elastic Map Reduce (EMR)](https://img.youtube.com/vi/HPHIGnEvVdk/maxresdefault.jpg)](https://youtu.be/HPHIGnEvVdk)
+[![How to deploy Apache Spark application on AWS Elastic Map Reduce (EMR)](https://img.youtube.com/vi/Ako_EXuIyPs/maxresdefault.jpg)](https://youtu.be/Ako_EXuIyPs)
 
 ### Working of the Spark Application
 
@@ -124,7 +120,7 @@ Regular Expressions were used instead of an XML parser because of the performanc
 
 > For comparison, when my Spark application was using *XML parser* for this purpose, it took over **2 hours** to process the full **2.5 GB** `dblp.xml` file. In contrast, it takes just **4 minutes** to do the same using *Regular Expressions*!
 
-The `DBLPPageRank.extractAuthorsAndVenues` method extracts the authors and venues from a `String` representing a single publication from the `dblp.xml` file and matches them against the list of faculty that belong to UIC's CS department, which is defined in `src/main/resources/uic-cs-faculty-list.txt`. This file maps the different variations of a faculty's name (that are known to appear in the `dblp.xml` file) to the faculty's name as it appears on the [UIC CS Department Website](https://cs.uic.edu/faculty/?).
+The `DBLPPageRank.extractAuthorsAndVenueFromPublication` method extracts the authors and venues from a `String` representing a single publication from the `dblp.xml` file and matches them against the list of faculty that belong to UIC's CS department, which is defined in `src/main/resources/uic-cs-faculty-list.txt`. This file maps the different variations of a faculty's name (that are known to appear in the `dblp.xml` file) to the faculty's name as it appears on the [UIC CS Department Website](https://cs.uic.edu/faculty/?).
 
 Each author is linked to every other author from this publication along with the publication venue, while the publication venue does not have any outgoing links. If either authors or publication venue could not be extracted, an empty sequence is returned.
 
